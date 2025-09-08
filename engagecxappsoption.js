@@ -1,4 +1,4 @@
-// ===================== EngageCX Apps → Dropdown Only (UI Config Gated, exact params) =====================
+// ===================== EngageCX Apps → Dropdown Only (UI Config Gated) =====================
 ;(function () {
   // ---------- tiny utilities ----------
   function jq() { return window.jQuery || window.$; }
@@ -11,31 +11,43 @@
 
   // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
-  const UI_CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN'; 
+  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN';
 
-  // ---------- gate: only run if the exact UI config is enabled ("yes") ----------
+  // Try to discover current domain/reseller from portal globals; provide safe fallbacks for testing
+  function getContext() {
+    const u = (window.user || window.nsUser || {}); // adapt if your portal exposes something else
+    const domain =
+      u.domain ||
+      window.portalDomain ||
+      window.sub_domain ||
+      'pizzademo'; // fallback for testing
+    const reseller =
+      u.reseller ||
+      window.portalReseller ||
+      'clarity';   // fallback
+    return { domain, reseller };
+  }
+
+  // ---------- gate: only run if UI config is enabled ("yes") ----------
   async function allowedByUiConfig() {
     try {
-      if (!(window.netsapiens && netsapiens.api && typeof netsapiens.api.post === 'function')) return false;
-      if (typeof window.DOMAIN === 'undefined' || typeof window.USER === 'undefined') return false;
-
-      const response = await netsapiens.api.post({
-        object: "uiconfig",
-        action: "read",
-        domain: DOMAIN,
-        config_name: UI_CONFIG_NAME,
-        user: USER
+      const { domain, reseller } = getContext();
+      const data = await netsapiens.api.post({
+        object: 'uiconfig',
+        action: 'read',
+        domain,
+        reseller,
+        config_name: CONFIG_NAME,
+        user: '*' // NS row is wildcarded; this guarantees a match
       });
 
-      // EXACT interpretation per instruction: only "yes" enables it
-      const val =
-        (response && response.config_value) ??
-        (Array.isArray(response) ? response[0]?.config_value : undefined) ??
-        (response && response.data && response.data.config_value);
-
-      return val === 'yes';
-    } catch {
-      return false; // fail closed
+      // Expect an array; enable only if first row says "yes"
+      const enabled = Array.isArray(data) && data[0]?.config_value === 'yes';
+      console.log('EngageCX UI config check:', { domain, reseller, enabled, raw: data });
+      return enabled;
+    } catch (error) {
+      console.error('Error fetching EngageCX UI config:', error);
+      return false;
     }
   }
 
@@ -54,9 +66,13 @@
       '</li>'
     );
 
-    // place before SMARTanalytics when present; else append (fail-safe)
-    var $smart = $menu.find('a:contains("SMARTanalytics")').closest('li');
-    if ($smart.length) { $smart.before($item); } else { $menu.append($item); }
+    // Place directly below "Clarity Video Anywhere"; fallback to append
+    var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
+    if ($videoAnywhere.length) {
+      $videoAnywhere.after($item);
+    } else {
+      $menu.append($item);
+    }
 
     // hover flyout
     $item.hover(
@@ -73,9 +89,9 @@
   }
 
   // ---------- run only if gate passes ----------
-  when(() => jq() && $('#app-menu-list').length, function () {
-    allowedByUiConfig().then(function (ok) {
-      if (ok) injectAppsMenu();
-    });
+  when(() => jq() && $('#app-menu-list').length, async function () {
+    const ok = await allowedByUiConfig();
+    if (ok) injectAppsMenu();
+    else console.log('EngageCX injection skipped: UI config disabled or missing.');
   });
 })();
