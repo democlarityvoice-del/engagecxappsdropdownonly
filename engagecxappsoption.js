@@ -1,4 +1,4 @@
-// ===================== EngageCX Apps → Dropdown Only =====================
+// ===================== EngageCX Apps → Dropdown Only (UI Config Gated) =====================
 ;(function () {
   // ---------- tiny utilities ----------
   function jq() { return window.jQuery || window.$; }
@@ -11,35 +11,40 @@
 
   // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
-  const UI_CONFIG_NAME = "PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN";
-  const DOMAIN = "pizzademo"; // for now, bind it to a test domain only
-  const USER = "*"; // wildcard for all users in that domain
+  const UI_CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN'; // 
 
-  // ---------- Fetch UI config from Netsapiens ----------
-  async function checkUiConfig() {
+  // ---------- UI config check ----------
+  async function allowedByUiConfig() {
     try {
-      const response = await netsapiens.api.post({
-        object: "uiconfig",
-        action: "read",
+      if (!(window.netsapiens && netsapiens.api && typeof netsapiens.api.post === 'function')) return false;
+
+      // Grab domain and user from known globals (adjust if yours differ)
+      const DOMAIN = window.DOMAIN || window.portalDomain || window.nsDomain;
+      const USER   = window.USER   || window.portalUser   || window.nsUser;
+
+      if (!DOMAIN || !USER) return false;
+
+      const resp = await netsapiens.api.post({
+        object: 'uiconfig',
+        action: 'read',
         domain: DOMAIN,
         config_name: UI_CONFIG_NAME,
         user: USER
       });
 
-      console.log("UI Config Response:", response);
+      // Normalize and interpret the returned config value
+      const raw =
+        (resp && (resp.config_value ?? resp.value)) ??
+        (Array.isArray(resp) ? resp[0]?.config_value : undefined) ??
+        (resp?.data?.config_value) ?? '';
 
-      // If response is valid and config_value is 'yes', return true
-      if (Array.isArray(response) && response.length > 0) {
-        return response[0].config_value === "yes";
-      }
-      return false;
+      return /^(1|y|yes|true|on)$/i.test(String(raw).trim());
     } catch (err) {
-      console.error("Error fetching UI config:", err);
-      return false;
+      return false; // fail closed on any error
     }
   }
 
-  // ---------- Apps menu (source of truth to launch) ----------
+  // ---------- Apps menu injection ----------
   function injectAppsMenu() {
     var $ = jq(); if (!$) return;
     var $menu = $('#app-menu-list');
@@ -54,40 +59,35 @@
       '</li>'
     );
 
-    // Always place below Clarity Video Anywhere
+    // Insert near neighbors if present, fallback to end (SmartAnalytics fail-safe)
     var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
-    if ($videoAnywhere.length) {
-      $videoAnywhere.after($item);
+    var $smart = $menu.find('a:contains("SMARTanalytics")').closest('li');
+    if ($videoAnywhere.length && $smart.length) {
+      $smart.before($item);
     } else {
-      $menu.append($item); // fallback
+      $menu.append($item);
     }
 
-    // Hover flyout
+    // Hover flyout behavior
     $item.hover(
       function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeIn(150); },
       function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeOut(150); }
     );
 
-    // Open in window → always go to login
+    // Click → always open EngageCX login
     $(document).off('click.ecxOpenWin').on('click.ecxOpenWin', '#engagecx-open-window', function (e) {
       e.preventDefault();
-      try {
-        window.open(ECX_LOGIN, '_blank', 'noopener,noreferrer');
-      } catch (err) {
-        window.location.href = ECX_LOGIN;
-      }
+      try { window.open(ECX_LOGIN, '_blank', 'noopener,noreferrer'); }
+      catch (err) { window.location.href = ECX_LOGIN; }
     });
   }
 
-  // ---------- Run only if config allows ----------
-  when(() => jq() && $('#app-menu-list').length, async () => {
-    const isEnabled = await checkUiConfig();
-    console.log("UI Config Enabled:", isEnabled);
-    if (isEnabled) {
-      injectAppsMenu();
-    } else {
-      console.log("EngageCX menu injection skipped: config not enabled.");
-    }
+  // ---------- Gate by UI config before injecting ----------
+  when(() => jq() && $('#app-menu-list').length, function () {
+    allowedByUiConfig().then(function (ok) {
+      if (ok) injectAppsMenu();
+    });
   });
-
 })();
+
+
