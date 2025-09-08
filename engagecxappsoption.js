@@ -1,4 +1,4 @@
-// ===================== EngageCX Apps → Dropdown Only (UI Config Gated) =====================
+// ===================== EngageCX Apps → Dropdown Only (UI Config Gated, exact params) =====================
 ;(function () {
   // ---------- tiny utilities ----------
   function jq() { return window.jQuery || window.$; }
@@ -11,43 +11,66 @@
 
   // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
-  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN';
+  const UI_CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN';
 
-  // Try to discover current domain/reseller from portal globals; provide safe fallbacks for testing
-  function getContext() {
-    const u = (window.user || window.nsUser || {}); // adapt if your portal exposes something else
-    const domain =
-      u.domain ||
-      window.portalDomain ||
-      window.sub_domain ||
-      'pizzademo'; // fallback for testing
-    const reseller =
-      u.reseller ||
-      window.portalReseller ||
-      'clarity';   // fallback
-    return { domain, reseller };
+  // ---------- resolve portal context (domain/user) without relying on globals ----------
+  function resolvePortalContext() {
+    var $ = jq();
+    var domain = null, user = null;
+
+    // Try known globals (if they exist, great)
+    domain = (window.DOMAIN || window.portalDomain || window.nsDomain) || null;
+    user   = (window.USER   || window.portalUser   || window.nsUser)   || null;
+
+    // Fallback: parse domain from the blue banner text: "You are viewing the ... (pizzademo) domain."
+    if (!domain) {
+      try {
+        var text = document.body ? document.body.innerText : '';
+        var m = text && text.match(/\(([-a-z0-9_]+)\)\s*domain\./i);
+        if (m) domain = m[1];
+      } catch {}
+    }
+
+    // Fallback: parse user from the top-right user menu text: "Regina Jennings (reginaj)"
+    if (!user && $) {
+      try {
+        var t = $('a, span, div').filter(function () {
+          var s = $(this).text();
+          return s && /\([^)]+\)/.test(s) && /regina|jennings|@/i.test(s); // loosen if needed
+        }).first().text();
+        var mu = t && t.match(/\(([^)]+)\)/);
+        if (mu) user = mu[1];
+      } catch {}
+    }
+
+    return { domain, user };
   }
 
-  // ---------- gate: only run if UI config is enabled ("yes") ----------
+  // ---------- gate: only run if the exact UI config is enabled ("yes") ----------
   async function allowedByUiConfig() {
     try {
-      const { domain, reseller } = getContext();
-      const data = await netsapiens.api.post({
-        object: 'uiconfig',
-        action: 'read',
-        domain,
-        reseller,
-        config_name: CONFIG_NAME,
-        user: '*' // NS row is wildcarded; this guarantees a match
+      if (!(window.netsapiens && netsapiens.api && typeof netsapiens.api.post === 'function')) return false;
+
+      var ctx = resolvePortalContext();
+      if (!ctx.domain || !ctx.user) return false; // exact param requirement
+
+      const response = await netsapiens.api.post({
+        object: "uiconfig",
+        action: "read",
+        domain: ctx.domain,
+        config_name: UI_CONFIG_NAME,
+        user: ctx.user
       });
 
-      // Expect an array; enable only if first row says "yes"
-      const enabled = Array.isArray(data) && data[0]?.config_value === 'yes';
-      console.log('EngageCX UI config check:', { domain, reseller, enabled, raw: data });
-      return enabled;
-    } catch (error) {
-      console.error('Error fetching EngageCX UI config:', error);
-      return false;
+      // EXACT: only "yes" enables it
+      const val =
+        (response && response.config_value) ??
+        (Array.isArray(response) ? response[0]?.config_value : undefined) ??
+        (response && response.data && response.data.config_value);
+
+      return val === 'yes';
+    } catch {
+      return false; // fail closed
     }
   }
 
@@ -66,13 +89,9 @@
       '</li>'
     );
 
-    // Place directly below "Clarity Video Anywhere"; fallback to append
-    var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
-    if ($videoAnywhere.length) {
-      $videoAnywhere.after($item);
-    } else {
-      $menu.append($item);
-    }
+    // place before SMARTanalytics when present; else append (fail-safe)
+    var $smart = $menu.find('a:contains("SMARTanalytics")').closest('li');
+    if ($smart.length) { $smart.before($item); } else { $menu.append($item); }
 
     // hover flyout
     $item.hover(
@@ -89,9 +108,9 @@
   }
 
   // ---------- run only if gate passes ----------
-  when(() => jq() && $('#app-menu-list').length, async function () {
-    const ok = await allowedByUiConfig();
-    if (ok) injectAppsMenu();
-    else console.log('EngageCX injection skipped: UI config disabled or missing.');
+  when(() => jq() && $('#app-menu-list').length, function () {
+    allowedByUiConfig().then(function (ok) {
+      if (ok) injectAppsMenu();
+    });
   });
 })();
