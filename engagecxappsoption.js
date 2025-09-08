@@ -46,8 +46,7 @@
     );
 
     // insert between neighbors if present; else append
-    var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
-    var $smart = $menu.find('a:contains("SMARTanalytics")').closest('li');
+    var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');    
     if ($videoAnywhere.length && $smart.length) {
       $smart.before($item);
     } else {
