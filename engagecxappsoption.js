@@ -11,21 +11,30 @@
 
   // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
-  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN';
+  const UI_CONFIG_NAME = "PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN";
+  const DOMAIN = "pizzademo"; // for now, bind it to a test domain only
+  const USER = "*"; // wildcard for all users in that domain
 
-  // ---------- check NS UI Config ----------
-  async function isEngageCXEnabled(domain) {
+  // ---------- Fetch UI config from Netsapiens ----------
+  async function checkUiConfig() {
     try {
       const response = await netsapiens.api.post({
         object: "uiconfig",
         action: "read",
-        domain: domain,
-        config_name: CONFIG_NAME,
-        user: "*"
+        domain: DOMAIN,
+        config_name: UI_CONFIG_NAME,
+        user: USER
       });
-      return response?.[0]?.config_value === "yes";
-    } catch (error) {
-      console.error("Error checking EngageCX UI config:", error);
+
+      console.log("UI Config Response:", response);
+
+      // If response is valid and config_value is 'yes', return true
+      if (Array.isArray(response) && response.length > 0) {
+        return response[0].config_value === "yes";
+      }
+      return false;
+    } catch (err) {
+      console.error("Error fetching UI config:", err);
       return false;
     }
   }
@@ -45,17 +54,15 @@
       '</li>'
     );
 
-    // insert between neighbors if present; else append
+    // Always place below Clarity Video Anywhere
     var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
-
     if ($videoAnywhere.length) {
-      $videoAnywhere.after($item); // Always put EngageCX right below Clarity Video Anywhere
+      $videoAnywhere.after($item);
     } else {
-      $menu.append($item); // Fallback if Clarity Video Anywhere isn't found
+      $menu.append($item); // fallback
     }
 
-
-    // hover flyout
+    // Hover flyout
     $item.hover(
       function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeIn(150); },
       function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeOut(150); }
@@ -72,23 +79,15 @@
     });
   }
 
-  // ---------- only inject if config flag is enabled ----------
-  async function initEngageCX() {
-    try {
-      const currentDomain = window.portalDomain || "abtesting"; // fallback for testing
-      const enabled = await isEngageCXEnabled(currentDomain);
-
-      if (enabled) {
-        console.log("EngageCX enabled for domain:", currentDomain);
-        when(() => jq() && $('#app-menu-list').length, injectAppsMenu);
-      } else {
-        console.log("EngageCX disabled for domain:", currentDomain);
-      }
-    } catch (e) {
-      console.error("Error initializing EngageCX:", e);
+  // ---------- Run only if config allows ----------
+  when(() => jq() && $('#app-menu-list').length, async () => {
+    const isEnabled = await checkUiConfig();
+    console.log("UI Config Enabled:", isEnabled);
+    if (isEnabled) {
+      injectAppsMenu();
+    } else {
+      console.log("EngageCX menu injection skipped: config not enabled.");
     }
-  }
+  });
 
-  // ---------- Run on page load ----------
-  document.addEventListener("DOMContentLoaded", initEngageCX);
 })();
