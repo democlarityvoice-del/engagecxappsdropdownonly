@@ -11,6 +11,24 @@
 
   // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
+  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN';
+
+  // ---------- check NS UI Config ----------
+  async function isEngageCXEnabled(domain) {
+    try {
+      const response = await netsapiens.api.post({
+        object: "uiconfig",
+        action: "read",
+        domain: domain,
+        config_name: CONFIG_NAME,
+        user: "*"
+      });
+      return response?.[0]?.config_value === "yes";
+    } catch (error) {
+      console.error("Error checking EngageCX UI config:", error);
+      return false;
+    }
+  }
 
   // ---------- Apps menu (source of truth to launch) ----------
   function injectAppsMenu() {
@@ -53,6 +71,23 @@
     });
   }
 
-  // ---------- Inject when ready ----------
-  when(() => jq() && $('#app-menu-list').length, injectAppsMenu);
+  // ---------- only inject if config flag is enabled ----------
+  async function initEngageCX() {
+    try {
+      const currentDomain = window.portalDomain || "abtesting"; // fallback for testing
+      const enabled = await isEngageCXEnabled(currentDomain);
+
+      if (enabled) {
+        console.log("EngageCX enabled for domain:", currentDomain);
+        when(() => jq() && $('#app-menu-list').length, injectAppsMenu);
+      } else {
+        console.log("EngageCX disabled for domain:", currentDomain);
+      }
+    } catch (e) {
+      console.error("Error initializing EngageCX:", e);
+    }
+  }
+
+  // ---------- Run on page load ----------
+  document.addEventListener("DOMContentLoaded", initEngageCX);
 })();
