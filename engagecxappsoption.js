@@ -46,12 +46,14 @@
     );
 
     // insert between neighbors if present; else append
-    var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');    
-    if ($videoAnywhere.length && $smart.length) {
-      $smart.before($item);
+    var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
+
+    if ($videoAnywhere.length) {
+      $videoAnywhere.after($item); // Always put EngageCX right below Clarity Video Anywhere
     } else {
-      $menu.append($item);
+      $menu.append($item); // Fallback if Clarity Video Anywhere isn't found
     }
+
 
     // hover flyout
     $item.hover(
