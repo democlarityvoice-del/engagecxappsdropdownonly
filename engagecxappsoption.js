@@ -19,7 +19,7 @@
       const data = await netsapiens.api.post({
         object: "uiconfig",
         action: "read",
-        domain: window.portalDomain, // dynamic domain
+        domain: pizzademo, // dynamic domain
         reseller: window.portalReseller || "clarity", // fallback if undefined
         config_name: "PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN",
         user: window.portalUser // dynamic user
