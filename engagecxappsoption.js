@@ -11,7 +11,7 @@
 
   // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
-  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX';
+  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN';
 
   // ---------- API check ----------
   function checkUiConfig(callback) {
