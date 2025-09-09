@@ -1,4 +1,4 @@
-// ===================== EngageCX Gated Apps Dropdown =====================
+// ===================== EngageCX Apps → Dropdown Only =====================
 ;(function () {
   // ---------- tiny utilities ----------
   function jq() { return window.jQuery || window.$; }
@@ -11,26 +11,8 @@
 
   // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
-  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN';
 
-  // ---------- API check ----------
-  function checkUiConfig(callback) {
-    if (!window.netsapiens || !netsapiens.api || !window.clarity || !clarity.user) return;
-    const payload = {
-      domain: clarity.user.domain,
-      reseller: clarity.user.reseller,
-      config_name: CONFIG_NAME,
-      user: clarity.user.user
-    };
-    netsapiens.api.post('portal_ui_config_get', payload).then(res => {
-      const value = res?.[CONFIG_NAME];
-      if (value && value.toUpperCase() === 'YES') {
-        callback();
-      }
-    });
-  }
-
-  // ---------- Apps menu injection ----------
+  // ---------- Apps menu (source of truth to launch) ----------
   function injectAppsMenu() {
     var $ = jq(); if (!$) return;
     var $menu = $('#app-menu-list');
@@ -71,8 +53,6 @@
     });
   }
 
-  // ---------- Gated launch ----------
-  when(() => jq() && window.netsapiens && window.clarity && $('#app-menu-list').length, () => {
-    checkUiConfig(injectAppsMenu);
-  });
+  // ---------- Inject when ready ----------
+  when(() => jq() && $('#app-menu-list').length, injectAppsMenu);
 })();
