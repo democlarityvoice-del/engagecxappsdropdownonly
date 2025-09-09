@@ -1,90 +1,78 @@
-// ===================== EngageCX Feature Injection =====================
-(function waitForClarityContext(tries = 20) {
-  if (typeof user !== 'undefined' && typeof user_domain !== 'undefined' && typeof sub_reseller !== 'undefined') {
-    console.log('[EngageCX] User context found:', { user, user_domain, sub_reseller });
-    checkEngageCxConfig(user, user_domain, sub_reseller);
-  } else if (tries > 0) {
-    console.log('[EngageCX] Waiting for user context...');
-    setTimeout(() => waitForClarityContext(tries - 1), 300);
-  } else {
-    console.error('[EngageCX] User context not found. Aborting.');
-  }
-})();
-
-async function checkEngageCxConfig(user, domain, reseller) {
-  try {
-    const config_name = "PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN";
-
-    console.log("[EngageCX] Checking UI config:", { domain, reseller, user, config_name });
-
-    const data = await netsapiens.api.post({
-      object: "uiconfig",
-      action: "read",
-      domain,
-      reseller,
-      config_name,
-      user
-    });
-
-    console.log("[EngageCX] Config response:", data);
-
-    const enabled = data && data[0] && data[0].config_value?.trim().toLowerCase() === "yes";
-    console.log("[EngageCX] Feature enabled =", enabled);
-
-    if (enabled) {
-      injectEngageCxMenu();
-    } else {
-      console.log("[EngageCX] Feature disabled. Skipping injection.");
-    }
-  } catch (err) {
-    console.error("[EngageCX] Failed to check config or inject menu:", err);
-  }
-}
-
-function injectEngageCxMenu() {
-  const $ = window.jQuery || window.$;
-  if (!$) return console.error("[EngageCX] jQuery not found.");
-
-  const $menu = $('#app-menu-list');
-  if (!$menu.length) return console.error("[EngageCX] App menu not found.");
-  if ($menu.find('li.engagecx-menu').length) {
-    console.log("[EngageCX] EngageCX menu already exists. Skipping.");
-    return;
+// ===================== EngageCX Gated Apps Dropdown =====================
+;(function () {
+  // ---------- tiny utilities ----------
+  function jq() { return window.jQuery || window.$; }
+  function when(pred, fn) {
+    if (pred()) return void fn();
+    const obs = new MutationObserver(() => { if (pred()) { obs.disconnect(); fn(); } });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    const iv = setInterval(() => { if (pred()) { clearInterval(iv); fn(); } }, 300);
   }
 
+  // ---------- constants ----------
   const ECX_LOGIN = 'https://engagecx.clarityvoice.com/#/login';
+  const CONFIG_NAME = 'PORTAL_SHOW_CLARITY_ENGAGECX';
 
-  const $item = $(`
-    <li class="dropdown-submenu engagecx-menu" id="engagecx-submenu">
-      <a tabindex="-1" href="#">EngageCX</a>
-      <ul class="dropdown-menu" style="top:0;left:100%;margin-top:0;margin-left:0;display:none;">
-        <li><a href="#" id="engagecx-open-window" target="_blank" rel="noopener noreferrer">Open in Window</a></li>
-      </ul>
-    </li>
-  `);
-
-  const $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
-  const $smart = $menu.find('a:contains("SMARTanalytics")').closest('li');
-
-  if ($videoAnywhere.length && $smart.length) {
-    $smart.before($item);
-  } else {
-    $menu.append($item);
+  // ---------- API check ----------
+  function checkUiConfig(callback) {
+    if (!window.netsapiens || !netsapiens.api || !window.clarity || !clarity.user) return;
+    const payload = {
+      domain: clarity.user.domain,
+      reseller: clarity.user.reseller,
+      config_name: CONFIG_NAME,
+      user: clarity.user.user
+    };
+    netsapiens.api.post('portal_ui_config_get', payload).then(res => {
+      const value = res?.[CONFIG_NAME];
+      if (value && value.toUpperCase() === 'YES') {
+        callback();
+      }
+    });
   }
 
-  $item.hover(
-    function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeIn(150); },
-    function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeOut(150); }
-  );
+  // ---------- Apps menu injection ----------
+  function injectAppsMenu() {
+    var $ = jq(); if (!$) return;
+    var $menu = $('#app-menu-list');
+    if (!$menu.length || $menu.find('li.engagecx-menu').length) return;
 
-  $(document).off('click.ecxOpenWin').on('click.ecxOpenWin', '#engagecx-open-window', function (e) {
-    e.preventDefault();
-    try {
-      window.open(ECX_LOGIN, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      window.location.href = ECX_LOGIN;
+    var $item = $(
+      '<li class="dropdown-submenu engagecx-menu" id="engagecx-submenu">' +
+        '<a tabindex="-1" href="#">EngageCX</a>' +
+        '<ul class="dropdown-menu" style="top:0;left:100%;margin-top:0;margin-left:0;display:none;">' +
+          '<li><a href="#" id="engagecx-open-window" target="_blank" rel="noopener noreferrer">Open in Window</a></li>' +
+        '</ul>' +
+      '</li>'
+    );
+
+    // insert between neighbors if present; else append
+    var $videoAnywhere = $menu.find('a:contains("Clarity Video Anywhere")').closest('li');
+    var $smart = $menu.find('a:contains("SMARTanalytics")').closest('li');
+    if ($videoAnywhere.length && $smart.length) {
+      $smart.before($item);
+    } else {
+      $menu.append($item);
     }
-  });
 
-  console.log("[EngageCX] Menu injected successfully.");
-}
+    // hover flyout
+    $item.hover(
+      function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeIn(150); },
+      function () { $(this).find('.dropdown-menu').first().stop(true, true).fadeOut(150); }
+    );
+
+    // Open in window → always go to login
+    $(document).off('click.ecxOpenWin').on('click.ecxOpenWin', '#engagecx-open-window', function (e) {
+      e.preventDefault();
+      try {
+        window.open(ECX_LOGIN, '_blank', 'noopener,noreferrer');
+      } catch (err) {
+        window.location.href = ECX_LOGIN;
+      }
+    });
+  }
+
+  // ---------- Gated launch ----------
+  when(() => jq() && window.netsapiens && window.clarity && $('#app-menu-list').length, () => {
+    checkUiConfig(injectAppsMenu);
+  });
+})();
