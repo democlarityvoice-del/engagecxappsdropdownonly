@@ -1,5 +1,16 @@
 // ===================== EngageCX Apps → Dropdown Only =====================
 ;(function () {
+
+  const engagecxenabled = await netsapiens.api.post({
+        object: "uiconfig",
+        action: "read",
+        domain: sub_domain,
+        config_name: "PORTAL_SHOW_CLARITY_ENGAGECX_DROPDOWN_BTN",
+        user: sub_user,
+  });
+
+console.log('engage enabled?', engagecxenabled);
+  
   // ---------- tiny utilities ----------
   function jq() { return window.jQuery || window.$; }
   function when(pred, fn) {
